@@ -29,7 +29,7 @@ const initDatabase = () => {
 
 // Récupération des données
 
-   const fetchData = (): any => {
+const fetchData = (): any => {
   storage.value
     .allDocs({ include_docs: true })
     .then((result: any) => {
@@ -41,21 +41,46 @@ const initDatabase = () => {
     })
 }
 
+// Ajout du document 
 const addDocument = () => {
   storage.value.post({
-    title: 'New'
+    title: 'Ajouter votre nouveau mot'
   }).then(() => {
     console.log("Ça marche");
     fetchData();
-  }).catch((error:any) => {
+  }).catch((error: any) => {
     console.error("Erreur :", error);
   });
 };
 
-  // TODO Récupération des données
-  // https://pouchdb.com/api.html#batch_fetch
-  // Regarder l'exemple avec function allDocs
-  // Remplir le tableau postsData avec les données récupérée
+// Delete document
+const deleteDocument = (post: any) => {
+  storage.value.remove(post._id, post._rev).then(() => {
+    console.log("Document supprimé");
+    fetchData();
+  }).catch((error: any) => {
+    console.error("Erreur lors de la suppression :", error);
+  });
+};
+
+// Update document
+
+const updateDocument = (post: any) => {
+  storage.value.put(post)
+    .then(() => {
+      console.log("Document mis à jour");
+      fetchData();
+    })
+    .catch((error: any) => {
+      console.error("Erreur lors de la mise à jour :", error);
+    });
+};
+
+// TODO Récupération des données
+// https://pouchdb.com/api.html#batch_fetch
+// Regarder l'exemple avec function allDocs
+// Remplir le tableau postsData avec les données récupérée
+
 
 onMounted(() => {
   console.log('=> Composant initialisé');
@@ -71,7 +96,12 @@ console.log(postsData.value)
   <button @click="addDocument">Clique ici</button>
 
   <article v-for="post in postsData" v-bind:key="(post as any).id">
-    <h2>{{ post.title }}</h2>
-    <p>{{ post.post_content }}</p>
-  </article>
+  <input v-model="post.title" />
+  <button @click="updateDocument(post)">Sauvegarder</button>
+  <button @click="deleteDocument(post)">Supprimer</button>
+</article>
 </template>
+
+
+
+
