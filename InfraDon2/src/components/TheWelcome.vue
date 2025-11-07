@@ -15,6 +15,9 @@ const storage = ref()
 // Données stockées
 const postsData = ref<Post[]>([])
 
+// déclaration de la DB locale
+const localDB = new PouchDB('infra_don2_local')
+
 // Initialisation de la base de données
 const initDatabase = () => {
   console.log('=> Connexion à la base de données');
@@ -25,6 +28,15 @@ const initDatabase = () => {
   } else {
     console.warn('Echec lors de la connexion à la base de données')
   }
+
+
+ // synchronisation automatique locale <-> distante
+  localDB.sync(db, {
+    live: false,
+    retry: true
+  })
+  .on('complete', () => console.log("Synchronisation initiale réussie"))
+  .on('error', (err) => console.error("Oups, erreur de synchronisation", err));
 }
 
 // Récupération des données
@@ -82,6 +94,17 @@ const updateDocument = (post: any) => {
 // Remplir le tableau postsData avec les données récupérée
 
 
+
+ //bouton manuel de réplication
+const replicateNow = () => {
+  localDB.replicate.to(storage.value)
+    .on('complete', () => {
+      console.log('Réplication locale -> distante réussie');
+      fetchData();
+    })
+    .on('error', (err) => console.error("Oups, erreur de réplication", err));
+};
+
 onMounted(() => {
   console.log('=> Composant initialisé');
   initDatabase()
@@ -94,7 +117,7 @@ console.log(postsData.value)
 <template>
   <h1>Fetch Data</h1>
   <button @click="addDocument">Clique ici</button>
-
+  <button @click="replicateNow">Synchroniser maintenant</button>
   <article v-for="post in postsData" v-bind:key="(post as any).id">
   <input v-model="post.title" />
   <button @click="updateDocument(post)">Sauvegarder</button>
