@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import PouchDB from 'pouchdb'
 
 declare interface Post {
@@ -18,30 +18,36 @@ const postsData = ref<Post[]>([])
 // déclaration de la DB locale
 const localDB = new PouchDB('infra_don2_local')
 
-// Initialisation de la base de données
+// déclaration de la DB distante
+const remoteDB = new PouchDB('http://lilianakmkv:8260@localhost:5984/infra_don2')
+
+// activer/désactiver le offline
+const isOffline = ref(false)
+
+// initialisation de la Database utilise isOffline pour la base
 const initDatabase = () => {
   console.log('=> Connexion à la base de données');
-  const db = new PouchDB('http://lilianakmkv:8260@localhost:5984/infra_don2')
-  if (db) {
-    console.log("Connecté à la collection : " + db?.name)
-    storage.value = db;
-  } else {
-    console.warn('Echec lors de la connexion à la base de données')
-  }
+
+  storage.value = isOffline.value ? localDB : remoteDB;
+  console.log("Mode actif :", isOffline.value ? "Offline (localDB)" : "Online (remoteDB)");
+
+  
 
 
  // synchronisation automatique locale <-> distante
-  localDB.sync(db, {
-    live: false,
-    retry: true
-  })
-  .on('complete', () => console.log("Synchronisation initiale réussie"))
-  .on('error', (err) => console.error("Oups, erreur de synchronisation", err));
+   if (!isOffline.value) { 
+    localDB.sync(remoteDB, { 
+      live: false,
+      retry: true
+    })
+      .on('complete', () => console.log("Synchronisation initiale réussie"))
+      .on('error', (err) => console.error("Oups, erreur de synchronisation", err));
+  } 
 }
 
 // Récupération des données
-
 const fetchData = (): any => {
+  if (!storage.value) return;
   storage.value
     .allDocs({ include_docs: true })
     .then((result: any) => {
@@ -56,7 +62,7 @@ const fetchData = (): any => {
 // Ajout du document 
 const addDocument = () => {
   storage.value.post({
-    title: 'Ajouter votre nouveau mot'
+    title: 'Ajouter votre nouveau mot ' + new Date().toLocaleTimeString() //identification du moment
   }).then(() => {
     console.log("Ça marche");
     fetchData();
@@ -97,13 +103,30 @@ const updateDocument = (post: any) => {
 
  //bouton manuel de réplication
 const replicateNow = () => {
-  localDB.replicate.to(storage.value)
+  localDB.replicate.to(remoteDB) 
     .on('complete', () => {
       console.log('Réplication locale -> distante réussie');
       fetchData();
     })
     .on('error', (err) => console.error("Oups, erreur de réplication", err));
 };
+
+watch(isOffline, (newVal) => {
+  console.log("Mode basculé :", newVal ? "Offline" : "Online");
+  storage.value = newVal ? localDB : remoteDB;
+
+  if (!newVal) {
+    // quand on repasse online, synchroniser
+    localDB.sync(remoteDB, { live: false, retry: true })
+      .on('complete', () => {
+        console.log("Synchronisation après retour online réussie");
+        fetchData();
+      })
+      .on('error', (err) => console.error("Erreur de sync :", err));
+  } else {
+    fetchData();
+  }
+});
 
 onMounted(() => {
   console.log('=> Composant initialisé');
@@ -116,6 +139,8 @@ console.log(postsData.value)
 
 <template>
   <h1>Fetch Data</h1>
+  <button v-if="!isOffline" @click="isOffline = true">Passer en Offline</button>
+  <button v-else @click="isOffline = false">Revenir en Online</button>
   <button @click="addDocument">Clique ici</button>
   <button @click="replicateNow">Synchroniser maintenant</button>
   <article v-for="post in postsData" v-bind:key="(post as any).id">
