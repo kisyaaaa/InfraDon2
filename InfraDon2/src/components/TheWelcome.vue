@@ -1,6 +1,29 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import PouchDB from 'pouchdb'
+import PouchDBFind from 'pouchdb-find'
+PouchDB.plugin(PouchDBFind)
+
+// "factory"
+const generatePosts = async (count = 10) => {
+  if (!storage.value) return;
+
+  const docs = Array.from({ length: count }, (_, i) => ({
+    _id: `post_${Date.now()}_${i}`,  
+    title: `Random ${i + 1}`,
+    post_content: `Contenu du post ${i + 1}`,
+    attributes: { creation_date: new Date().toISOString() }
+  }));
+
+  try {
+    await storage.value.bulkDocs(docs);
+    console.log(`${count} documents générés !`);
+    fetchData();
+  } catch (err) {
+    console.error("Erreur lors de la génération :", err);
+  }
+};
+
 
 declare interface Post {
   title: string;
@@ -14,6 +37,9 @@ declare interface Post {
 const storage = ref()
 // Données stockées
 const postsData = ref<Post[]>([])
+
+// recherche 
+const searchQuery = ref('') 
 
 // déclaration de la DB locale
 const localDB = new PouchDB('infra_don2_local')
@@ -31,19 +57,43 @@ const initDatabase = () => {
   storage.value = isOffline.value ? localDB : remoteDB;
   console.log("Mode actif :", isOffline.value ? "Offline (localDB)" : "Online (remoteDB)");
 
-  
+//création de l'index
+const createIndex = async () => {
+  if (!storage.value) return
+  try {
+    await storage.value.createIndex({ index: { fields: ['title'] } })
+    console.log('Index créé sur le champ "title"')
+  } catch (err) {
+    console.error('Erreur lors de la création de l’index', err)
+  }
+}
 
 
- // synchronisation automatique locale <-> distante
-   if (!isOffline.value) { 
-    localDB.sync(remoteDB, { 
+
+  // synchronisation automatique locale <-> distante
+  if (!isOffline.value) {
+    localDB.sync(remoteDB, {
       live: false,
       retry: true
     })
       .on('complete', () => console.log("Synchronisation initiale réussie"))
       .on('error', (err) => console.error("Oups, erreur de synchronisation", err));
-  } 
+  }
 }
+
+// création de l'index 
+const createIndex = async () => {
+  if (!storage.value) return;
+  try {
+    await storage.value.createIndex({
+      index: { fields: ['title'] }
+    });
+    console.log('Index créé sur le champ "title"');
+  } catch (err) {
+    console.error('Erreur lors de la création de l’index', err);
+  }
+}
+
 
 // Récupération des données
 const fetchData = (): any => {
@@ -57,6 +107,20 @@ const fetchData = (): any => {
     .catch((error: any) => {
       console.error('=> Erreur lors de la récupération des données :', error)
     })
+}
+
+// fonction recherche 
+const searchPosts = async () => {
+  if (!storage.value) return;
+  try {
+    const result = await storage.value.find({
+      selector: { title: { $regex: new RegExp(searchQuery.value, 'i') } }
+    });
+    postsData.value = result.docs
+    console.log('Résultats de la recherche :', result.docs)
+  } catch (err) {
+    console.error('Erreur lors de la recherche', err)
+  }
 }
 
 // Ajout du document 
@@ -101,9 +165,9 @@ const updateDocument = (post: any) => {
 
 
 
- //bouton manuel de réplication
+//bouton manuel de réplication
 const replicateNow = () => {
-  localDB.replicate.to(remoteDB) 
+  localDB.replicate.to(remoteDB)
     .on('complete', () => {
       console.log('Réplication locale -> distante réussie');
       fetchData();
@@ -131,6 +195,7 @@ watch(isOffline, (newVal) => {
 onMounted(() => {
   console.log('=> Composant initialisé');
   initDatabase()
+  createIndex() 
   fetchData()
 });
 console.log(postsData.value)
@@ -143,13 +208,15 @@ console.log(postsData.value)
   <button v-else @click="isOffline = false">Revenir en Online</button>
   <button @click="addDocument">Clique ici</button>
   <button @click="replicateNow">Synchroniser maintenant</button>
+   <div>
+   <button @click="generatePosts(10)">Générer 10 posts</button>
+    <input v-model="searchQuery" placeholder="Rechercher par titre" />
+    <button @click="searchPosts">Rechercher</button>
+    <button @click="fetchData">Réinitialiser</button>
+  </div>
   <article v-for="post in postsData" v-bind:key="(post as any).id">
-  <input v-model="post.title" />
-  <button @click="updateDocument(post)">Sauvegarder</button>
-  <button @click="deleteDocument(post)">Supprimer</button>
-</article>
+    <input v-model="post.title" />
+    <button @click="updateDocument(post)">Sauvegarder</button>
+    <button @click="deleteDocument(post)">Supprimer</button>
+  </article>
 </template>
-
-
-
-
