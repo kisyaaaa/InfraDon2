@@ -4,15 +4,35 @@ import PouchDB from 'pouchdb'
 import PouchDBFind from 'pouchdb-find'
 PouchDB.plugin(PouchDBFind)
 
+declare interface Comment {
+  id: string;            
+  content: string;       
+  created_at: string;     
+}
+
+declare interface Post {
+  _id?: string;          
+  _rev?: string;          
+  title: string;          
+  post_content: string;   
+  attributes: {
+    creation_date: any; 
+  };
+  likes: number;          
+  comments: Comment[];  
+}
+
 // "factory"
-const generatePosts = async (count = 10) => {
+const generatePosts = async (count = 50) => {
   if (!storage.value) return;
 
   const docs = Array.from({ length: count }, (_, i) => ({
     _id: `post_${Date.now()}_${i}`,  
-    title: `Random ${i + 1}`,
+    title: `Random post ${i + 1}`,
     post_content: `Contenu du post ${i + 1}`,
-    attributes: { creation_date: new Date().toISOString() }
+    attributes: { creation_date: new Date().toISOString() },
+    likes: Math.floor(Math.random() * 100),
+    comments: [],
   }));
 
   try {
@@ -24,15 +44,6 @@ const generatePosts = async (count = 10) => {
   }
 };
 
-
-declare interface Post {
-  title: string;
-  post_content: string;
-  attributes: {
-    creation_date: any;
-  };
-}
-
 // Référence à la base de données
 const storage = ref()
 // Données stockées
@@ -40,6 +51,9 @@ const postsData = ref<Post[]>([])
 
 // recherche 
 const searchQuery = ref('') 
+//tri
+const sortField = ref<'creation_date' | 'likes' | 'attributes.creation_date'>('likes'); 
+const sortDirection = ref<'desc' | 'asc'>('desc');
 
 // déclaration de la DB locale
 const localDB = new PouchDB('infra_don2_local')
@@ -56,19 +70,6 @@ const initDatabase = () => {
 
   storage.value = isOffline.value ? localDB : remoteDB;
   console.log("Mode actif :", isOffline.value ? "Offline (localDB)" : "Online (remoteDB)");
-
-//création de l'index
-const createIndex = async () => {
-  if (!storage.value) return
-  try {
-    await storage.value.createIndex({ index: { fields: ['title'] } })
-    console.log('Index créé sur le champ "title"')
-  } catch (err) {
-    console.error('Erreur lors de la création de l’index', err)
-  }
-}
-
-
 
   // synchronisation automatique locale <-> distante
   if (!isOffline.value) {
@@ -88,7 +89,13 @@ const createIndex = async () => {
     await storage.value.createIndex({
       index: { fields: ['title'] }
     });
-    console.log('Index créé sur le champ "title"');
+        await storage.value.createIndex({
+      index: { fields: ['likes'] }
+    });
+        await storage.value.createIndex({
+      index: { fields: ['attributes.creation_date'] }
+    });
+    console.log('Index créé avec succès!');
   } catch (err) {
     console.error('Erreur lors de la création de l’index', err);
   }
@@ -98,38 +105,56 @@ const createIndex = async () => {
 // Récupération des données
 const fetchData = (): any => {
   if (!storage.value) return;
-  storage.value
-    .allDocs({ include_docs: true })
+  storage.value.find({
+    selector: { _id: { $exists: true } },
+    sort: [{ [sortField.value]: sortDirection.value }],
+  })
     .then((result: any) => {
-      console.log('=> Données récupérées :', result.rows)
-      postsData.value = result.rows.map((row: any) => row.doc);
+      console.log('=> Données récupérées et affichées:', result.docs.length);
+      postsData.value = result.docs as Post[];
     })
     .catch((error: any) => {
       console.error('=> Erreur lors de la récupération des données :', error)
     })
 }
 
+
+//fonction de tri
+const changeSort = (field: 'creation_date' | 'likes') => {
+  const fieldPath = field === 'creation_date' ? 'attributes.creation_date' : field;
+  if (sortField.value === fieldPath) {
+    sortDirection.value = sortDirection.value === 'desc' ? 'asc' : 'desc';
+  } else {
+    sortField.value = fieldPath;
+    sortDirection.value = 'desc';
+  }
+  fetchData();
+};
+
 // fonction recherche 
 const searchPosts = async () => {
   if (!storage.value) return;
   const query = String(searchQuery.value || '');
-  try {
-    const result = await storage.value.find({
-      selector: {
-        title: { $regex: query }
-      }
+  storage.value.find({
+    selector: { title: { $regex: query } }
+  })
+    .then((result: any) => {
+      postsData.value = result.docs as Post[];
+      console.log('Résultats de la recherche :', result.docs);
+    })
+    .catch((err: any) => {
+      console.error('Erreur lors de la recherche', err);
     });
-    postsData.value = result.docs
-    console.log('Résultats de la recherche :', result.docs)
-  } catch (err) {
-    console.error('Erreur lors de la recherche', err)
-  }
-}
+};
 
 // Ajout du document 
 const addDocument = () => {
   storage.value.post({
-    title: 'Ajouter votre nouveau mot ' + new Date().toLocaleTimeString() //identification du moment
+    title: 'Ajouter votre nouveau mot ' + new Date().toLocaleTimeString(),
+    post_content: 'Contenu par défaut',
+    attributes: { creation_date: new Date().toISOString() },
+    likes: 0,
+    comments: [],
   }).then(() => {
     console.log("Ça marche");
     fetchData();
@@ -139,7 +164,7 @@ const addDocument = () => {
 };
 
 // Delete document
-const deleteDocument = (post: any) => {
+const deleteDocument = (post: Post) => {
   storage.value.remove(post._id, post._rev).then(() => {
     console.log("Document supprimé");
     fetchData();
@@ -150,7 +175,7 @@ const deleteDocument = (post: any) => {
 
 // Update document
 
-const updateDocument = (post: any) => {
+const updateDocument = (post: Post) => {
   storage.value.put(post)
     .then(() => {
       console.log("Document mis à jour");
@@ -166,7 +191,27 @@ const updateDocument = (post: any) => {
 // Regarder l'exemple avec function allDocs
 // Remplir le tableau postsData avec les données récupérée
 
+//likes et commentaires
+const toggleLike = (post: Post) => {
+  post.likes = (post.likes || 0) + 1;
+  updateDocument(post);
+};
 
+const addComment = (post: Post, newContent: string) => {
+  if (!newContent.trim()) return;
+  const newComment: Comment = {
+    id: `comment_${Date.now()}_${Math.random()}`,
+    content: newContent,
+    created_at: new Date().toISOString()
+  };
+  post.comments = [...(post.comments || []), newComment];
+  updateDocument(post);
+};
+
+const deleteComment = (post: Post, commentId: string) => {
+  post.comments = (post.comments || []).filter(c => c.id !== commentId);
+  updateDocument(post);
+};
 
 //bouton manuel de réplication
 const replicateNow = () => {
@@ -206,20 +251,43 @@ console.log(postsData.value)
 </script>
 
 <template>
-  <h1>Fetch Data</h1>
+  <h1>Amstramgram</h1>
   <button v-if="!isOffline" @click="isOffline = true">Passer en Offline</button>
   <button v-else @click="isOffline = false">Revenir en Online</button>
   <button @click="addDocument">Clique ici</button>
   <button @click="replicateNow">Synchroniser maintenant</button>
    <div>
-   <button @click="generatePosts(10)">Générer 10 posts</button>
+   <button @click="generatePosts(10)">Générer 50 posts</button>
     <input v-model="searchQuery" placeholder="Rechercher par titre" />
     <button @click="searchPosts">Rechercher</button>
     <button @click="fetchData">Réinitialiser</button>
+     <button @click="changeSort('likes')">Trier par likes</button>
+    <button @click="changeSort('creation_date')">Trier par date</button>
   </div>
-  <article v-for="post in postsData" v-bind:key="(post as any).id">
+  <article v-for="post in postsData" :key="(post as any)._id">
     <input v-model="post.title" />
     <button @click="updateDocument(post)">Sauvegarder</button>
     <button @click="deleteDocument(post)">Supprimer</button>
+    <button @click="toggleLike(post)">Like ({{ post.likes || 0 }})</button>
+
+     <div>
+      <h4>Commentaires ({{ post.comments?.length || 0 }})</h4>
+      <ul v-if="post.comments?.length">
+        <li v-for="comment in post.comments" :key="comment.id">
+          {{ comment.content }}
+          <button @click="deleteComment(post, comment.id)">X</button>
+        </li>
+      </ul>
+
+      <div>
+        <input :id="'comment-input-' + (post as any)._id" placeholder="Ajouter un commentaire" />
+        <button
+          @click="
+            addComment(post, (($event.target as HTMLElement).previousElementSibling as HTMLInputElement)?.value || '');
+            ((($event.target as HTMLElement).previousElementSibling as HTMLInputElement).value = '');
+          "
+        >Ajouter</button>
+      </div>
+    </div>
   </article>
 </template>
