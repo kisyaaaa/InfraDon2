@@ -112,9 +112,12 @@ const fetchData = (): any => {
 // fonction recherche 
 const searchPosts = async () => {
   if (!storage.value) return;
+  const query = String(searchQuery.value || '');
   try {
     const result = await storage.value.find({
-      selector: { title: { $regex: new RegExp(searchQuery.value, 'i') } }
+      selector: {
+        title: { $regex: query }
+      }
     });
     postsData.value = result.docs
     console.log('Résultats de la recherche :', result.docs)
