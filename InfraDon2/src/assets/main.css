@@ -1,35 +1,139 @@
-@import './base.css';
 
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  font-weight: normal;
+:root {
+  --pink-candy-light: #FFC0CB; /* Rose Pâle (Fond Léger) */
+  --pink-candy-medium: #e07aad; /* Rose Moyen (Boutons/Accents) */
+  --pink-candy-dark: #C71585; /* Rose Foncé (Texte/Bordures) */
+  --white-sugar: #FFF0F5; /* Blanc Rosé (Conteneurs) */
+  --soft-shadow: 0 4px 6px rgba(255, 105, 180, 0.2); /* Ombre douce et rosée */
 }
 
-a,
-.green {
-  text-decoration: none;
-  color: hsla(160, 100%, 37%, 1);
-  transition: 0.4s;
-  padding: 3px;
+/* ----------------------------------- */
+/* Styles Généraux et Conteneur Principal */
+/* ----------------------------------- */
+
+/* Le corps principal de l'application */
+div {
+  font-family: 'Arial', sans-serif;
+  color: var(--pink-candy-dark);
+  background-color: var(--white-sugar);
+  padding: 20px;
+  border-radius: 15px;
+  box-shadow: var(--soft-shadow);
 }
 
-@media (hover: hover) {
-  a:hover {
-    background-color: hsla(160, 100%, 37%, 0.2);
-  }
+h1 {
+  text-align: center;
+  color: var(--pink-candy-medium);
+  border-bottom: 3px solid var(--pink-candy-light);
+  padding-bottom: 10px;
+  margin-bottom: 25px;
 }
 
-@media (min-width: 1024px) {
-  body {
-    display: flex;
-    place-items: center;
-  }
+/* ----------------------------------- */
+/* Boutons et Inputs (Les bonbons !) */
+/* ----------------------------------- */
 
-  #app {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 0 2rem;
-  }
+button {
+  background-color: var(--pink-candy-medium);
+  color: white;
+  border: none;
+  border-radius: 20px; /* Bords très arrondis */
+  padding: 8px 15px;
+  margin: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.1s ease;
+  font-weight: bold;
+  box-shadow: 0 3px var(--pink-candy-dark); /* Effet 3D léger */
+}
+
+button:hover {
+  background-color: var(--pink-candy-dark);
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px var(--pink-candy-dark);
+}
+
+input {
+  border: 2px solid var(--pink-candy-light);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin: 5px;
+  outline: none;
+  transition: border-color 0.3s ease;
+  color: var(--pink-candy-dark);
+}
+
+input:focus {
+  border-color: var(--pink-candy-medium);
+}
+
+/* ----------------------------------- */
+/* Le Conteneur de Post (Article) */
+/* ----------------------------------- */
+
+article {
+  border: 1px solid var(--pink-candy-light);
+  background-color: white;
+  margin: 20px 0;
+  padding: 15px;
+  border-radius: 15px; /* Coins arrondis pour l'article */
+  box-shadow: var(--soft-shadow);
+}
+
+article h4 {
+  color: var(--pink-candy-medium);
+  margin-top: 15px;
+}
+
+/* ----------------------------------- */
+/* Section Commentaires */
+/* ----------------------------------- */
+
+ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+li {
+  background-color: var(--pink-candy-light);
+  color: var(--pink-candy-dark);
+  padding: 5px 10px;
+  margin: 5px 0;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9em;
+}
+
+li button {
+  background: none;
+  color: var(--pink-candy-dark);
+  padding: 2px 5px;
+  margin: 0;
+  border: 1px solid var(--pink-candy-dark);
+  border-radius: 50%;
+  font-size: 0.8em;
+  line-height: 1;
+  box-shadow: none;
+  transition: background-color 0.2s;
+}
+
+li button:hover {
+  background-color: var(--pink-candy-dark);
+  color: white;
+  transform: none;
+}
+
+/* Style spécifique pour le bouton Like */
+.toggle-like-button {
+  background-color: #ff33aa; /* Un rose plus vibrant pour le like */
+  box-shadow: 0 3px #cc0066;
+}
+
+.toggle-like-button:hover {
+  background-color: #cc0066;
 }
