@@ -254,7 +254,7 @@ console.log(postsData.value)
   <h1>Amstramgram</h1>
   <button v-if="!isOffline" @click="isOffline = true">Passer en Offline</button>
   <button v-else @click="isOffline = false">Revenir en Online</button>
-  <button @click="addDocument">Clique ici</button>
+  <button @click="addDocument">Ajouter un nouveau post</button>
   <button @click="replicateNow">Synchroniser maintenant</button>
    <div>
    <button @click="generatePosts(10)">Générer 50 posts</button>
