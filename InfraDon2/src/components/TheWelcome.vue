@@ -11,28 +11,31 @@ declare interface Comment {
 }
 
 declare interface Post {
-  _id?: string;          
-  _rev?: string;          
-  title: string;          
-  post_content: string;   
+  _id?: string;
+  _rev?: string;
+  title: string;
+  post_content: string;
   attributes: {
-    creation_date: any; 
+    creation_date: any;
   };
-  likes: number;          
-  comments: Comment[];  
+  likes: number;
+  comments: Comment[];
+  category: 'vacances' | 'lifestyle' | 'éducatif' | 'général';
 }
 
 // "factory"
 const generatePosts = async (count = 50) => {
   if (!storage.value) return;
 
+  const categories: ('vacances' | 'lifestyle' | 'éducatif' | 'général')[] = ['vacances', 'lifestyle', 'éducatif', 'général'];
   const docs = Array.from({ length: count }, (_, i) => ({
-    _id: `post_${Date.now()}_${i}`,  
+    _id: `post_${Date.now()}_${i}`,
     title: `Random post ${i + 1}`,
     post_content: `Contenu du post ${i + 1}`,
     attributes: { creation_date: new Date().toISOString() },
     likes: Math.floor(Math.random() * 100),
     comments: [],
+    category: categories[Math.floor(Math.random() * categories.length)],
   }));
 
   try {
@@ -49,11 +52,13 @@ const storage = ref()
 // Données stockées
 const postsData = ref<Post[]>([])
 
-// recherche 
-const searchQuery = ref('') 
+// recherche
+const searchQuery = ref('')
 //tri
-const sortField = ref<'creation_date' | 'likes' | 'attributes.creation_date'>('likes'); 
+const sortField = ref<'creation_date' | 'likes' | 'attributes.creation_date'>('likes');
 const sortDirection = ref<'desc' | 'asc'>('desc');
+// filtre par catégorie
+const selectedCategory = ref<'all' | 'vacances' | 'lifestyle' | 'éducatif' | 'général'>('all');
 
 // déclaration de la DB locale
 const localDB = new PouchDB('infra_don2_local')
@@ -82,22 +87,25 @@ const initDatabase = () => {
   }
 }
 
-// création de l'index 
+// création de l'index
 const createIndex = async () => {
   if (!storage.value) return;
   try {
     await storage.value.createIndex({
       index: { fields: ['title'] }
     });
-        await storage.value.createIndex({
+    await storage.value.createIndex({
       index: { fields: ['likes'] }
     });
-        await storage.value.createIndex({
+    await storage.value.createIndex({
       index: { fields: ['attributes.creation_date'] }
+    });
+    await storage.value.createIndex({
+      index: { fields: ['category'] }
     });
     console.log('Index créé avec succès!');
   } catch (err) {
-    console.error('Erreur lors de la création de l’index', err);
+    console.error("Erreur lors de la création de l'index", err);
   }
 }
 
@@ -105,8 +113,16 @@ const createIndex = async () => {
 // Récupération des données
 const fetchData = (): any => {
   if (!storage.value) return;
+
+  const selector: any = { _id: { $exists: true } };
+
+  // Ajouter le filtre de catégorie si une catégorie est sélectionnée
+  if (selectedCategory.value !== 'all') {
+    selector.category = selectedCategory.value;
+  }
+
   storage.value.find({
-    selector: { _id: { $exists: true } },
+    selector: selector,
     sort: [{ [sortField.value]: sortDirection.value }],
   })
     .then((result: any) => {
@@ -147,7 +163,7 @@ const searchPosts = async () => {
     });
 };
 
-// Ajout du document 
+// Ajout du document
 const addDocument = () => {
   storage.value.post({
     title: 'Ajouter votre nouveau mot ' + new Date().toLocaleTimeString(),
@@ -155,6 +171,7 @@ const addDocument = () => {
     attributes: { creation_date: new Date().toISOString() },
     likes: 0,
     comments: [],
+    category: 'général',
   }).then(() => {
     console.log("Ça marche");
     fetchData();
@@ -256,16 +273,34 @@ console.log(postsData.value)
   <button v-else @click="isOffline = false">Revenir en Online</button>
   <button @click="addDocument">Ajouter un nouveau post</button>
   <button @click="replicateNow">Synchroniser maintenant</button>
-   <div>
-   <button @click="generatePosts(10)">Générer 50 posts</button>
+
+  <div>
+    <button @click="generatePosts(10)">Générer 50 posts</button>
     <input v-model="searchQuery" placeholder="Rechercher par titre" />
     <button @click="searchPosts">Rechercher</button>
     <button @click="fetchData">Réinitialiser</button>
-     <button @click="changeSort('likes')">Trier par likes</button>
+    <button @click="changeSort('likes')">Trier par likes</button>
     <button @click="changeSort('creation_date')">Trier par date</button>
+  </div>
+
+  <div>
+    <label>Filtrer par catégorie : </label>
+    <select v-model="selectedCategory" @change="fetchData">
+      <option value="all">Toutes les catégories</option>
+      <option value="vacances">Vacances</option>
+      <option value="lifestyle">Lifestyle</option>
+      <option value="éducatif">Éducatif</option>
+      <option value="général">Général</option>
+    </select>
   </div>
   <article v-for="post in postsData" :key="(post as any)._id">
     <input v-model="post.title" />
+    <select v-model="post.category">
+      <option value="vacances">Vacances</option>
+      <option value="lifestyle">Lifestyle</option>
+      <option value="éducatif">Éducatif</option>
+      <option value="général">Général</option>
+    </select>
     <button @click="updateDocument(post)">Sauvegarder</button>
     <button @click="deleteDocument(post)">Supprimer</button>
     <button @click="toggleLike(post)">Like ({{ post.likes || 0 }})</button>
