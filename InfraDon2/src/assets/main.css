@@ -28,6 +28,17 @@ h1 {
   margin-bottom: 25px;
 }
 
+.status-container {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.status-online { color: #059669; font-weight: 600; }
+.status-offline { color: #dc2626; font-weight: 600; }
+
 /* ----------------------------------- */
 /* Boutons et Inputs (Les bonbons !) */
 /* ----------------------------------- */

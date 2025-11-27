@@ -24,7 +24,7 @@ declare interface Post {
 }
 
 // "factory"
-const generatePosts = async (count = 50) => {
+const generatePosts = async (count = 10) => {
   if (!storage.value) return;
 
   const categories: ('vacances' | 'lifestyle' | 'éducatif' | 'général')[] = ['vacances', 'lifestyle', 'éducatif', 'général'];
@@ -59,6 +59,22 @@ const sortField = ref<'creation_date' | 'likes' | 'attributes.creation_date'>('l
 const sortDirection = ref<'desc' | 'asc'>('desc');
 // filtre par catégorie
 const selectedCategory = ref<'all' | 'vacances' | 'lifestyle' | 'éducatif' | 'général'>('all');
+// pagination
+const displayLimit = ref(10);
+
+// posts affichés (limités)
+const displayedPosts = ref<Post[]>([])
+
+// fonction pour voir plus de posts (affiche TOUS les posts)
+const showMore = () => {
+  displayLimit.value = postsData.value.length;
+  updateDisplayedPosts();
+}
+
+// fonction pour mettre à jour les posts affichés
+const updateDisplayedPosts = () => {
+  displayedPosts.value = postsData.value.slice(0, displayLimit.value);
+}
 
 // déclaration de la DB locale
 const localDB = new PouchDB('infra_don2_local')
@@ -111,7 +127,7 @@ const createIndex = async () => {
 
 
 // Récupération des données
-const fetchData = (): any => {
+const fetchData = (resetLimit: boolean = true): any => {
   if (!storage.value) return;
 
   const selector: any = { _id: { $exists: true } };
@@ -128,6 +144,10 @@ const fetchData = (): any => {
     .then((result: any) => {
       console.log('=> Données récupérées et affichées:', result.docs.length);
       postsData.value = result.docs as Post[];
+      if (resetLimit) {
+        displayLimit.value = postsData.value.length; // Afficher tous par défaut
+      }
+      updateDisplayedPosts();
     })
     .catch((error: any) => {
       console.error('=> Erreur lors de la récupération des données :', error)
@@ -144,7 +164,8 @@ const changeSort = (field: 'creation_date' | 'likes') => {
     sortField.value = fieldPath;
     sortDirection.value = 'desc';
   }
-  fetchData();
+  displayLimit.value = 10; // Limiter à 10 lors du tri
+  fetchData(false);
 };
 
 // fonction recherche 
@@ -275,25 +296,26 @@ console.log(postsData.value)
   <button @click="replicateNow">Synchroniser maintenant</button>
 
   <div>
-    <button @click="generatePosts(10)">Générer 50 posts</button>
+    <button @click="generatePosts(10)">Générer 10 posts</button>
     <input v-model="searchQuery" placeholder="Rechercher par titre" />
     <button @click="searchPosts">Rechercher</button>
-    <button @click="fetchData">Réinitialiser</button>
-    <button @click="changeSort('likes')">Trier par likes</button>
-    <button @click="changeSort('creation_date')">Trier par date</button>
+    <button @click="() => fetchData()">Réinitialiser</button>
   </div>
 
   <div>
     <label>Filtrer par catégorie : </label>
-    <select v-model="selectedCategory" @change="fetchData">
+    <select v-model="selectedCategory" @change="() => fetchData()">
       <option value="all">Toutes les catégories</option>
       <option value="vacances">Vacances</option>
       <option value="lifestyle">Lifestyle</option>
       <option value="éducatif">Éducatif</option>
       <option value="général">Général</option>
     </select>
+    <button @click="changeSort('likes')">Trier par likes</button>
+    <button @click="changeSort('creation_date')">Trier par date</button>
   </div>
-  <article v-for="post in postsData" :key="(post as any)._id">
+
+  <article v-for="post in displayedPosts" :key="(post as any)._id">
     <input v-model="post.title" />
     <select v-model="post.category">
       <option value="vacances">Vacances</option>
@@ -325,4 +347,8 @@ console.log(postsData.value)
       </div>
     </div>
   </article>
+
+  <div v-if="displayedPosts.length < postsData.length" style="text-align: center; margin: 20px 0;">
+    <button @click="showMore">Voir plus</button>
+  </div>
 </template>
