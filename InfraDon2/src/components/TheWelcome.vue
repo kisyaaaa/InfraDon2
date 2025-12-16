@@ -23,6 +23,15 @@ declare interface Post {
   category: 'vacances' | 'lifestyle' | 'éducatif' | 'général';
 }
 
+declare interface User {
+  _id?: string;
+  _rev?: string;
+  username: string;
+  email: string;
+  followers: number;
+  following: number;
+}
+
 // "factory"
 const generatePosts = async (count = 10) => {
   if (!storage.value) return;
@@ -51,6 +60,7 @@ const generatePosts = async (count = 10) => {
 const storage = ref()
 // Données stockées
 const postsData = ref<Post[]>([])
+const usersData = ref<User[]>([])
 
 // recherche
 const searchQuery = ref('')
@@ -119,6 +129,9 @@ const createIndex = async () => {
     await storage.value.createIndex({
       index: { fields: ['category'] }
     });
+    await storage.value.createIndex({
+  index: { fields: ['username'] }
+    });
     console.log('Index créé avec succès!');
   } catch (err) {
     console.error("Erreur lors de la création de l'index", err);
@@ -130,7 +143,9 @@ const createIndex = async () => {
 const fetchData = (resetLimit: boolean = true): any => {
   if (!storage.value) return;
 
-  const selector: any = { _id: { $exists: true } };
+  const selector: any = {
+    _id: { $regex: '^post_' } 
+  };
 
   // Ajouter le filtre de catégorie si une catégorie est sélectionnée
   if (selectedCategory.value !== 'all') {
@@ -145,7 +160,7 @@ const fetchData = (resetLimit: boolean = true): any => {
       console.log('=> Données récupérées et affichées:', result.docs.length);
       postsData.value = result.docs as Post[];
       if (resetLimit) {
-        displayLimit.value = postsData.value.length; // Afficher tous par défaut
+        displayLimit.value = postsData.value.length; 
       }
       updateDisplayedPosts();
     })
@@ -153,6 +168,59 @@ const fetchData = (resetLimit: boolean = true): any => {
       console.error('=> Erreur lors de la récupération des données :', error)
     })
 }
+
+const fetchUsers = (): any => {
+  if (!storage.value) return;
+  
+  storage.value.find({
+    selector: { 
+      _id: { $regex: '^user_' }
+    }
+  })
+    .then((result: any) => {
+      console.log('=> Utilisateurs récupérés:', result.docs.length);
+      usersData.value = result.docs as User[];
+    })
+    .catch((error: any) => {
+      console.error('=> Erreur lors de la récupération des utilisateurs :', error)
+    })
+}
+
+
+const addUser = () => {
+  storage.value.post({
+    _id: `user_${Date.now()}`,
+    username: 'User_' + Date.now(),
+    email: `user${Date.now()}@example.com`,
+    followers: 0,
+    following: 0,
+  }).then(() => {
+    console.log("Utilisateur ajouté");
+    fetchUsers();
+  }).catch((error: any) => {
+    console.error("Erreur :", error);
+  });
+};
+
+const deleteUser = (user: User) => {
+  storage.value.remove(user._id, user._rev).then(() => {
+    console.log("Utilisateur supprimé");
+    fetchUsers();
+  }).catch((error: any) => {
+    console.error("Erreur lors de la suppression :", error);
+  });
+};
+
+const updateUser = (user: User) => {
+  storage.value.put(user)
+    .then(() => {
+      console.log("Utilisateur mis à jour");
+      fetchUsers();
+    })
+    .catch((error: any) => {
+      console.error("Erreur lors de la mise à jour :", error);
+    });
+};
 
 
 //fonction de tri
@@ -164,7 +232,7 @@ const changeSort = (field: 'creation_date' | 'likes') => {
     sortField.value = fieldPath;
     sortDirection.value = 'desc';
   }
-  displayLimit.value = 10; // Limiter à 10 lors du tri
+  displayLimit.value = 10; // Limiter à 10 
   fetchData(false);
 };
 
@@ -187,6 +255,7 @@ const searchPosts = async () => {
 // Ajout du document
 const addDocument = () => {
   storage.value.post({
+    _id: `post_${Date.now()}`,
     title: 'Ajouter votre nouveau mot ' + new Date().toLocaleTimeString(),
     post_content: 'Contenu par défaut',
     attributes: { creation_date: new Date().toISOString() },
@@ -283,6 +352,7 @@ onMounted(() => {
   initDatabase()
   createIndex() 
   fetchData()
+  fetchUsers()
 });
 console.log(postsData.value)
 
@@ -295,6 +365,18 @@ console.log(postsData.value)
   <button @click="addDocument">Ajouter un nouveau post</button>
   <button @click="replicateNow">Synchroniser maintenant</button>
 
+<div>
+  <h2>Utilisateurs</h2>
+  <button @click="addUser" style="background-color: #A4D65E; color: white;">Ajouter un utilisateur</button>
+
+  <article v-for="user in usersData" :key="user._id">
+    <input v-model="user.username" />
+    <input v-model="user.email" />
+    <p>Followers: {{ user.followers }} | Following: {{ user.following }}</p>
+    <button @click="updateUser(user)">Sauvegarder</button>
+    <button @click="deleteUser(user)">Supprimer</button>
+  </article>
+</div>
   <div>
     <button @click="generatePosts(10)">Générer 10 posts</button>
     <input v-model="searchQuery" placeholder="Rechercher par titre" />
