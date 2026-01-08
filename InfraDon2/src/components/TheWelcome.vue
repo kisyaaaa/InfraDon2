@@ -13,6 +13,7 @@ declare interface Comment {
 declare interface Post {
   _id?: string;
   _rev?: string;
+  _attachments?: any;
   title: string;
   post_content: string;
   attributes: {
@@ -21,6 +22,7 @@ declare interface Post {
   likes: number;
   comments: Comment[];
   category: 'vacances' | 'lifestyle' | 'éducatif' | 'général';
+  image_url?: string;
 }
 
 declare interface User {
@@ -75,9 +77,12 @@ const displayLimit = ref(10);
 // posts affichés (limités)
 const displayedPosts = ref<Post[]>([])
 
-// fonction pour voir plus de posts (affiche TOUS les posts)
+// état d'affichage des commentaires (map postId -> boolean)
+const showAllComments = ref<Record<string, boolean>>({})
+
+// fonction pour voir plus de posts (affiche les 10 suivants)
 const showMore = () => {
-  displayLimit.value = postsData.value.length;
+  displayLimit.value += 10;
   updateDisplayedPosts();
 }
 
@@ -102,13 +107,16 @@ const initDatabase = () => {
   storage.value = isOffline.value ? localDB : remoteDB;
   console.log("Mode actif :", isOffline.value ? "Offline (localDB)" : "Online (remoteDB)");
 
-  // synchronisation automatique locale <-> distante
+  // synchronisation automatique locale <-> distante en temps réel
   if (!isOffline.value) {
     localDB.sync(remoteDB, {
-      live: false,
+      live: true,
       retry: true
     })
-      .on('complete', () => console.log("Synchronisation initiale réussie"))
+      .on('change', (info) => {
+        console.log("Changement détecté:", info);
+        fetchData();
+      })
       .on('error', (err) => console.error("Oups, erreur de synchronisation", err));
   }
 }
@@ -156,11 +164,15 @@ const fetchData = (resetLimit: boolean = true): any => {
     selector: selector,
     sort: [{ [sortField.value]: sortDirection.value }],
   })
-    .then((result: any) => {
+    .then(async (result: any) => {
       console.log('=> Données récupérées et affichées:', result.docs.length);
       postsData.value = result.docs as Post[];
+      // Charger les images pour chaque post
+      for (const post of postsData.value) {
+        await loadImage(post);
+      }
       if (resetLimit) {
-        displayLimit.value = postsData.value.length; 
+        displayLimit.value = postsData.value.length;
       }
       updateDisplayedPosts();
     })
@@ -320,6 +332,67 @@ const deleteComment = (post: Post, commentId: string) => {
   updateDocument(post);
 };
 
+// basculer l'affichage de tous les commentaires
+const toggleComments = (postId: string) => {
+  showAllComments.value[postId] = !showAllComments.value[postId];
+};
+
+// obtenir les commentaires à afficher (dernier ou tous)
+const getDisplayedComments = (post: Post): Comment[] => {
+  if (!post.comments?.length) return [];
+  if (showAllComments.value[post._id || '']) return post.comments;
+  const lastComment = post.comments[post.comments.length - 1];
+  return lastComment ? [lastComment] : [];
+};
+
+// Gestion des images
+const uploadImage = async (post: Post, file: File) => {
+  if (!storage.value || !post._id || !post._rev) return;
+
+  try {
+    const response = await storage.value.putAttachment(
+      post._id,
+      'image',
+      post._rev,
+      file,
+      file.type
+    );
+    post._rev = response.rev;
+    console.log('Image uploadée avec succès');
+    await loadImage(post);
+  } catch (err) {
+    console.error('Erreur lors de l\'upload:', err);
+  }
+};
+
+const loadImage = async (post: Post) => {
+  if (!storage.value || !post._id || !post._attachments?.image) return;
+
+  try {
+    const blob = await storage.value.getAttachment(post._id, 'image');
+    post.image_url = URL.createObjectURL(blob);
+  } catch (err) {
+    console.error('Erreur lors du chargement de l\'image:', err);
+  }
+};
+
+const deleteImage = async (post: Post) => {
+  if (!storage.value || !post._id || !post._rev) return;
+
+  try {
+    const response = await storage.value.removeAttachment(post._id, 'image', post._rev);
+    post._rev = response.rev;
+    if (post.image_url) {
+      URL.revokeObjectURL(post.image_url);
+      post.image_url = undefined;
+    }
+    console.log('Image supprimée avec succès');
+    fetchData();
+  } catch (err) {
+    console.error('Erreur lors de la suppression:', err);
+  }
+};
+
 //bouton manuel de réplication
 const replicateNow = () => {
   localDB.replicate.to(remoteDB)
@@ -335,10 +408,10 @@ watch(isOffline, (newVal) => {
   storage.value = newVal ? localDB : remoteDB;
 
   if (!newVal) {
-    // quand on repasse online, synchroniser
-    localDB.sync(remoteDB, { live: false, retry: true })
-      .on('complete', () => {
-        console.log("Synchronisation après retour online réussie");
+    // quand on repasse online, synchroniser en temps réel
+    localDB.sync(remoteDB, { live: true, retry: true })
+      .on('change', (info) => {
+        console.log("Changement détecté après retour online:", info);
         fetchData();
       })
       .on('error', (err) => console.error("Erreur de sync :", err));
@@ -409,14 +482,34 @@ console.log(postsData.value)
     <button @click="deleteDocument(post)">Supprimer</button>
     <button @click="toggleLike(post)">Like ({{ post.likes || 0 }})</button>
 
+    <div>
+      <h4>Image</h4>
+      <img v-if="post.image_url" :src="post.image_url" style="max-width: 300px; display: block; margin: 10px 0;" />
+      <input
+        type="file"
+        accept="image/*"
+        @change="(e) => {
+          const file = (e.target as HTMLInputElement).files?.[0];
+          if (file) uploadImage(post, file);
+        }"
+      />
+      <button v-if="post.image_url" @click="deleteImage(post)">Supprimer l'image</button>
+    </div>
+
      <div>
       <h4>Commentaires ({{ post.comments?.length || 0 }})</h4>
       <ul v-if="post.comments?.length">
-        <li v-for="comment in post.comments" :key="comment.id">
+        <li v-for="comment in getDisplayedComments(post)" :key="comment.id">
           {{ comment.content }}
           <button @click="deleteComment(post, comment.id)">X</button>
         </li>
       </ul>
+      <button
+        v-if="post.comments && post.comments.length > 1"
+        @click="toggleComments(post._id || '')"
+      >
+        {{ showAllComments[post._id || ''] ? 'Masquer les commentaires' : 'Voir tous les commentaires' }}
+      </button>
 
       <div>
         <input :id="'comment-input-' + (post as any)._id" placeholder="Ajouter un commentaire" />
